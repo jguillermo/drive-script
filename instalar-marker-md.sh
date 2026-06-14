@@ -124,6 +124,10 @@ cat > "$WF/Contents/Info.plist" <<'PLIST_EOF'
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
 <dict>
+	<key>CFBundleIdentifier</key>
+	<string>com.seaberyat.marker.convertir-markdown</string>
+	<key>CFBundleName</key>
+	<string>Convertir a Markdown (marker)</string>
 	<key>NSServices</key>
 	<array>
 		<dict>
@@ -227,15 +231,25 @@ cat > "$WF/Contents/document.wflow" <<'WFLOW_EOF'
 					<key>COMMAND_STRING</key>
 					<string>export PATH="/opt/homebrew/bin:/usr/local/bin:$PATH"
 MARKER="$HOME/marker-env/bin/marker_single"
+LOG="$HOME/Library/Logs/marker-quickaction.log"
 total=$#
 count=0
-osascript -e "display notification \"Convirtiendo $total archivo(s) a Markdown…\" with title \"Marker\""
+osascript -e "display notification \"Convirtiendo $total archivo(s)… puede tardar varios minutos\" with title \"Marker\""
 for f in "$@"; do
   dir="$(dirname "$f")"
   # La carpeta de salida lleva el mismo nombre del archivo (marker la crea dentro de "$dir")
-  "$MARKER" "$f" --output_dir "$dir" &gt;/dev/null 2&gt;&amp;1 &amp;&amp; count=$((count + 1))
+  echo "=== $(date) :: $f ===" &gt;&gt; "$LOG"
+  if "$MARKER" "$f" --output_dir "$dir" &gt;&gt; "$LOG" 2&gt;&amp;1; then
+    count=$((count + 1))
+  fi
 done
-osascript -e "display notification \"$count de $total convertido(s)\" with title \"Marker\" subtitle \"Markdown listo junto al archivo original\" sound name \"Glass\""</string>
+# Abrir en Finder la carpeta donde quedaron los resultados
+[ "$total" -gt 0 ] &amp;&amp; open "$(dirname "$1")"
+if [ "$count" -eq "$total" ]; then
+  osascript -e "display notification \"$count de $total convertido(s)\" with title \"Marker\" subtitle \"Markdown listo junto al archivo original\" sound name \"Glass\""
+else
+  osascript -e "display notification \"$count de $total — revisa el registro\" with title \"Marker\" subtitle \"~/Library/Logs/marker-quickaction.log\" sound name \"Basso\""
+fi</string>
 					<key>CheckedForUserDefaultShell</key>
 					<true/>
 					<key>inputMethod</key>
@@ -390,10 +404,16 @@ plutil -lint "$WF/Contents/document.wflow"  >/dev/null && ok "document.wflow vá
 # ============================================================================
 #  PASO 7 — Registrar el servicio y refrescar Finder
 # ============================================================================
-paso "Paso 7/7 — Registrando el servicio en macOS"
+paso "Paso 7/7 — Registrando y activando el servicio en macOS"
+# En macOS recientes (Ventura/Sonoma/Sequoia/Tahoe) hay que VACIAR la caché de
+# Servicios (-flush), no solo actualizarla (-update); si no, la acción se
+# registra pero NO aparece en el menú contextual de Finder.
+/System/Library/CoreServices/pbs -flush  2>/dev/null || true
 /System/Library/CoreServices/pbs -update 2>/dev/null || true
+killall pbs    2>/dev/null || true
 killall Finder 2>/dev/null || true
-ok "Servicio registrado y Finder reiniciado"
+ok "Servicio registrado (caché de Servicios vaciada y Finder reiniciado)"
+aviso "macOS 13+: debes ACTIVARLO a mano y reiniciar sesión (instrucciones al final)."
 
 # ============================================================================
 #  FIN
@@ -419,8 +439,18 @@ CÓMO USAR
 
 NOTAS
 -----
-  • La primera conversión de cada sesión tarda un poco (carga modelos).
-  • Si la acción no aparece: Ajustes del Sistema -> Extensiones ->
-    Acciones rápidas, y actívala.
+  • La primera conversión de cada sesión tarda VARIOS MINUTOS (carga los
+    modelos de IA en memoria). Es normal: verás una notificación al iniciar
+    y otra al terminar; al final se abre en Finder la carpeta con el resultado.
+
+  • ACTIVAR la acción (OBLIGATORIO en macOS 13 Ventura y superior):
+      1. Ajustes del Sistema -> General -> Elementos de inicio y extensiones
+         -> Extensiones (Finder / Acciones rápidas).
+      2. Marca la casilla "Convertir a Markdown (marker)".
+      3. Cierra sesión y vuelve a entrar (o reinicia): el menú contextual de
+         Finder solo refresca su caché al reiniciar sesión.
+      4. En Finder: clic derecho -> submenú "Acciones rápidas".
+
+  • Registro/errores de cada conversión:  ~/Library/Logs/marker-quickaction.log
 
 FINAL
